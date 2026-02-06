@@ -1,27 +1,34 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Dropzone } from "@/components/dropzone";
 
 export default function Home() {
   const workerRef = useRef<Worker | null>(null);
   const [progress, setProgress] = useState(0);
-  const [status, setStatus] = useState("Idle");
+  const [status, setStatus] = useState("Ready");
   const [logs, setLogs] = useState<string[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  const fileRef = useRef<File | null>(null);
+  const offsetRef = useRef(0);
+  
+  const CHUNK_SIZE = 10 * 1024 * 1024; 
 
   useEffect(() => {
-    // 1. Initialize Worker
     workerRef.current = new Worker(new URL("../workers/compute.worker.ts", import.meta.url));
 
-    // 2. Listen for messages from the worker
     workerRef.current.onmessage = (event) => {
       const { status, progress, result } = event.data;
 
-      if (status === "progress") {
+      if (status === "chunk_ack") {
+        readNextChunk();
+      } else if (status === "progress") {
         setProgress(progress);
-        setStatus(`Crunching... ${Math.round(progress)}%`);
       } else if (status === "complete") {
         setStatus("Done");
-        setLogs((prev) => [...prev, `✅ ${result}`]);
+        setLogs(prev => [...prev, `✅ ${result}`]);
+        setIsProcessing(false);
         setProgress(100);
       }
     };
@@ -31,27 +38,46 @@ export default function Home() {
     };
   }, []);
 
-  const handleStart = () => {
-    if (!workerRef.current) return;
+  const readNextChunk = () => {
+    const file = fileRef.current;
+    const offset = offsetRef.current;
+    const worker = workerRef.current;
 
-    setLogs((prev) => [...prev, "🚀 Starting Worker..."]);
-    setStatus("Starting...");
-    setProgress(0);
+    if (!file || !worker) return;
 
-    // 1. Create a big fake buffer (100MB) to simulate a file
-    const size = 100 * 1024 * 1024; 
-    const buffer = new ArrayBuffer(size);
+    if (offset >= file.size) {
+      worker.postMessage({ action: "end_stream" });
+      return;
+    }
+
+    const chunk = file.slice(offset, offset + CHUNK_SIZE);
     
-    // Fill edges to prove memory integrity
-    const view = new Uint8Array(buffer);
-    view[0] = 1; 
-    view[size - 1] = 255;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (e.target?.result) {
+        const buffer = e.target.result as ArrayBuffer;
+        worker.postMessage(
+          { action: "chunk", chunk: buffer, fileSize: file.size }, 
+          [buffer]
+        );
+        
+        offsetRef.current += CHUNK_SIZE;
+      }
+    };
+    reader.readAsArrayBuffer(chunk);
+  };
 
-    setLogs((prev) => [...prev, `📦 Created ${size / 1024 / 1024}MB Buffer`]);
+  const handleFileSelect = (file: File) => {
+    setLogs(prev => [...prev, `📄 Selected: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`]);
+    
+    fileRef.current = file;
+    offsetRef.current = 0;
+    setIsProcessing(true);
+    setProgress(0);
+    setStatus("Streaming...");
 
-    // 2. Send to worker using ZERO COPY (Transferable)
-    // The second argument [buffer] moves the memory. It instantly vanishes from the main thread.
-    workerRef.current.postMessage({ action: "analyze", buffer }, [buffer]);
+    workerRef.current?.postMessage({ action: "start_stream" });
+    readNextChunk();
   };
 
   return (
@@ -59,36 +85,27 @@ export default function Home() {
       <div className="w-full max-w-2xl space-y-8">
         
         <header className="border-b border-neutral-800 pb-6">
-          <h1 className="text-3xl font-bold text-white mb-2">LocalCrunch v0.1</h1>
-          <p className="text-neutral-500">Thread Isolation Test</p>
+          <h1 className="text-3xl font-bold text-white mb-2">LocalCrunch v0.2</h1>
+          <p className="text-neutral-500">Zero-Copy File Streaming</p>
         </header>
 
-        <div className="flex items-center justify-between bg-neutral-900 p-6 rounded-lg border border-neutral-800">
-          <div className="flex flex-col gap-2">
-             <span className="text-sm text-neutral-400">Status</span>
-             <span className="text-xl font-medium text-white">{status}</span>
-          </div>
-          <button
-            onClick={handleStart}
-            className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-3 rounded-md font-bold transition-all active:scale-95"
-          >
-            Analyze 100MB
-          </button>
+        <Dropzone onFileSelect={handleFileSelect} isProcessing={isProcessing} />
+
+        <div className="flex items-center justify-between">
+           <span className="text-sm text-neutral-400">Status: <span className="text-white">{status}</span></span>
+           <span className="text-sm text-neutral-400">{Math.round(progress)}%</span>
         </div>
 
-        {/* Visual Progress Bar */}
-        <div className="relative h-6 w-full bg-neutral-900 rounded-full overflow-hidden border border-neutral-800">
+        <div className="relative h-2 w-full bg-neutral-900 rounded-full overflow-hidden">
           <div 
-            className="h-full bg-gradient-to-r from-blue-600 to-cyan-400 transition-all duration-100 ease-linear"
+            className="h-full bg-blue-500 transition-all duration-75 ease-out"
             style={{ width: `${progress}%` }}
           />
         </div>
 
-        {/* Logs Console */}
-        <div className="bg-black border border-neutral-800 rounded-lg p-4 h-64 overflow-y-auto font-mono text-sm shadow-inner">
-          {logs.length === 0 && <span className="text-neutral-600 italic">System ready...</span>}
+        <div className="bg-black border border-neutral-800 rounded-lg p-4 h-48 overflow-y-auto text-xs font-mono shadow-inner">
           {logs.map((log, i) => (
-            <div key={i} className="mb-2 text-neutral-300 border-b border-neutral-900 pb-1 last:border-0 last:mb-0">
+            <div key={i} className="mb-1 text-neutral-400 border-b border-neutral-900/50 pb-1">
               {log}
             </div>
           ))}
