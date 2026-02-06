@@ -1,16 +1,36 @@
-import { act } from "react";
+import init, { debug_wasm, init_hooks } from "../cruncher_core/pkg/cruncher_core";
 
 const ctx: Worker = self as any;
+let isWasmInitialized = false;
 
 let totalBytesReceived = 0;
 
-ctx.onmessage = (e: MessageEvent) => {
+ctx.onmessage = async (e: MessageEvent) => {
 
     const { action, chunk, fileSize } = e.data;
 
     if (action === 'start_stream') {
-        totalBytesReceived = 0;
-        ctx.postMessage({ status: 'ready' });
+        try {
+            await init();
+            init_hooks();
+
+            isWasmInitialized = true;
+
+            const message = debug_wasm();
+
+            ctx.postMessage({
+                status: "complete",
+                result: message
+            });
+        } catch (error) {
+            console.error("WASM Failed to load:", error);
+            ctx.postMessage({ status: 'error', error: 'Failed to load WASM' });
+        }
+        return;
+    }
+    if (!isWasmInitialized && (action === "start_stream" || action === "chunk")) {
+        console.warn("WASM not initialized yet!");
+        return;
     }
 
     else if (action === 'chunk') {
