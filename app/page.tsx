@@ -12,14 +12,19 @@ export default function Home() {
 
   const fileRef = useRef<File | null>(null);
   const offsetRef = useRef(0);
-  
-  const CHUNK_SIZE = 10 * 1024 * 1024; 
+
+  const CHUNK_SIZE = 10 * 1024 * 1024;
 
   useEffect(() => {
     workerRef.current = new Worker(new URL("../workers/compute.worker.ts", import.meta.url));
 
     workerRef.current.onmessage = (event) => {
       const { status, progress, result } = event.data;
+
+      if (status === "complete" && result.includes("🦀")) {
+        setLogs(prev => [...prev, `✅ ${result}`]);
+        return;
+      }
 
       if (status === "chunk_ack") {
         readNextChunk();
@@ -32,6 +37,8 @@ export default function Home() {
         setProgress(100);
       }
     };
+
+    workerRef.current.postMessage({ action: "init_wasm" });
 
     return () => {
       workerRef.current?.terminate();
@@ -51,16 +58,16 @@ export default function Home() {
     }
 
     const chunk = file.slice(offset, offset + CHUNK_SIZE);
-    
+
     const reader = new FileReader();
     reader.onload = (e) => {
       if (e.target?.result) {
         const buffer = e.target.result as ArrayBuffer;
         worker.postMessage(
-          { action: "chunk", chunk: buffer, fileSize: file.size }, 
+          { action: "chunk", chunk: buffer, fileSize: file.size },
           [buffer]
         );
-        
+
         offsetRef.current += CHUNK_SIZE;
       }
     };
@@ -69,7 +76,7 @@ export default function Home() {
 
   const handleFileSelect = (file: File) => {
     setLogs(prev => [...prev, `📄 Selected: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`]);
-    
+
     fileRef.current = file;
     offsetRef.current = 0;
     setIsProcessing(true);
@@ -83,7 +90,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-200 p-12 font-mono flex flex-col items-center">
       <div className="w-full max-w-2xl space-y-8">
-        
+
         <header className="border-b border-neutral-800 pb-6">
           <h1 className="text-3xl font-bold text-white mb-2">LocalCrunch v0.2</h1>
           <p className="text-neutral-500">Zero-Copy File Streaming</p>
@@ -92,12 +99,12 @@ export default function Home() {
         <Dropzone onFileSelect={handleFileSelect} isProcessing={isProcessing} />
 
         <div className="flex items-center justify-between">
-           <span className="text-sm text-neutral-400">Status: <span className="text-white">{status}</span></span>
-           <span className="text-sm text-neutral-400">{Math.round(progress)}%</span>
+          <span className="text-sm text-neutral-400">Status: <span className="text-white">{status}</span></span>
+          <span className="text-sm text-neutral-400">{Math.round(progress)}%</span>
         </div>
 
         <div className="relative h-2 w-full bg-neutral-900 rounded-full overflow-hidden">
-          <div 
+          <div
             className="h-full bg-blue-500 transition-all duration-75 ease-out"
             style={{ width: `${progress}%` }}
           />
