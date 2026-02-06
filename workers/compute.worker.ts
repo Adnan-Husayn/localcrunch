@@ -1,43 +1,36 @@
+import { act } from "react";
 
 const ctx: Worker = self as any;
 
+let totalBytesReceived = 0;
+
 ctx.onmessage = (e: MessageEvent) => {
 
-    const { action, buffer } = e.data;
+    const { action, chunk, fileSize } = e.data;
 
-    if (action === "analyze") {
-        const view = new Uint8Array(buffer);
-        const totalBytes = view.length;
-        let processed = 0;
-        const chunkSize = 5 * 1024 * 1024;
+    if (action === 'start_stream') {
+        totalBytesReceived = 0;
+        ctx.postMessage({ status: 'ready' });
+    }
 
-        const processChunk = () => {
-            const remaining = totalBytes - processed;
-            const currentChunkSize = Math.min(chunkSize, remaining);
+    else if (action === 'chunk') {
+        const view = new Uint8Array(chunk);
 
-            if (remaining <= 0) {
-                ctx.postMessage(
-                    { status: 'complete', result: `Processed ${totalBytes} bytes` },
-                    [buffer]
-                );
-                return;
-            }
+        totalBytesReceived += view.length;
 
-            const end = processed + chunkSize;
+        ctx.postMessage({
+            status: 'progress',
+            processed: totalBytesReceived,
+            progress: (totalBytesReceived / fileSize) * 100,
+        })
 
-            for (let i = processed; i < end; i++) {
-                const _ = view[i];
-            }
+        ctx.postMessage({ status: 'chunk_ack' })
+    }
 
-            processed += currentChunkSize;
-
-            ctx.postMessage({
-                status: "progress",
-                progress: (processed / totalBytes) * 100,
-            });
-
-            setTimeout(processChunk, 0);
-        }
-        processChunk();
+    else if (action === 'end_stream') {
+        ctx.postMessage({
+            status: "complete",
+            result: `Streaming Complete. Received ${totalBytesReceived} bytes.`,
+        });
     }
 };
