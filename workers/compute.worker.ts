@@ -7,7 +7,7 @@ let processor: DataProcessor | null = null;
 
 ctx.onmessage = async (e: MessageEvent) => {
 
-    const { action, chunk, fileSize } = e.data;
+    const { action, chunk, columnIndex } = e.data;
 
     if (action === 'init_wasm') {
         try {
@@ -27,7 +27,8 @@ ctx.onmessage = async (e: MessageEvent) => {
         if (processor) {
             processor.free();
         }
-        processor = new DataProcessor();
+        const col = columnIndex !== undefined ? columnIndex : 2;
+        processor = new DataProcessor(col);
 
         ctx.postMessage({ status: 'ready' });
     }
