@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { Dropzone } from "@/components/dropzone";
+import { XCircle, RefreshCw, AlertCircle } from "lucide-react"; 
 
 interface CrunchStats {
   rows_processed: number;
@@ -14,52 +15,57 @@ export default function Home() {
   const [status, setStatus] = useState("Ready");
   const [logs, setLogs] = useState<string[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  
+  const [error, setError] = useState<string | null>(null); 
   const [stats, setStats] = useState<CrunchStats>({ rows_processed: 0, numeric_sum: 0 });
 
   const fileRef = useRef<File | null>(null);
   const offsetRef = useRef(0);
   const CHUNK_SIZE = 10 * 1024 * 1024; 
+  
+  const setupWorker = useCallback(() => {
+    
+    if (workerRef.current) {
+      workerRef.current.terminate();
+    }
 
-  useEffect(() => {
-    workerRef.current = new Worker(new URL("../workers/compute.worker.ts", import.meta.url));
+    const worker = new Worker(new URL("../workers/compute.worker.ts", import.meta.url));
+    workerRef.current = worker;
 
-    workerRef.current.onmessage = (event) => {
-      const { status, result, stats: newStats } = event.data;
+    worker.onmessage = (event) => {
+      const { status, result, stats: newStats, error } = event.data;
 
       if (status === "progress") {
-        if (newStats) {
-          setStats(newStats);
-        }
-        
+        if (newStats) setStats(newStats);
         if (fileRef.current) {
            const percent = (offsetRef.current / fileRef.current.size) * 100;
            setProgress(percent);
         }
-      } 
-      
-      else if (status === "chunk_ack") {
+      } else if (status === "chunk_ack") {
         readNextChunk();
-      } 
-      
-      else if (status === "complete") {
+      } else if (status === "complete") {
         if (result.includes("🦀")) {
            setLogs(prev => [...prev, `✅ ${result}`]);
         } else {
            setStatus("Done");
-           setLogs(prev => [...prev, `✅ ${result}`]);
            setIsProcessing(false);
            setProgress(100);
         }
+      } else if (status === "error") {
+        
+        setError(error);
+        setIsProcessing(false);
+        setStatus("Error");
       }
     };
 
-    workerRef.current.postMessage({ action: "init_wasm" });
-
-    return () => {
-      workerRef.current?.terminate();
-    };
+    
+    worker.postMessage({ action: "init_wasm" });
   }, []);
+  
+  useEffect(() => {
+    setupWorker();
+    return () => workerRef.current?.terminate();
+  }, [setupWorker]);
 
   const readNextChunk = () => {
     const file = fileRef.current;
@@ -90,9 +96,12 @@ export default function Home() {
   };
 
   const handleFileSelect = (file: File) => {
-    setLogs(prev => [...prev, `📄 Selected: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`]);
+    setError(null); 
+    setLogs(prev => [...prev, `📄 Processing: ${file.name}`]);
+    
     fileRef.current = file;
     offsetRef.current = 0;
+    
     setIsProcessing(true);
     setProgress(0);
     setStats({ rows_processed: 0, numeric_sum: 0 }); 
@@ -102,42 +111,102 @@ export default function Home() {
     readNextChunk();
   };
 
+  const handleCancel = () => {
+    setStatus("Cancelled by user");
+    setIsProcessing(false);
+    setProgress(0);
+    setLogs(prev => [...prev, "Operation Cancelled"]);
+    
+    
+    setupWorker();
+  };
+
+  
+  const handleReset = () => {
+    setStats({ rows_processed: 0, numeric_sum: 0 });
+    setLogs([]);
+    setStatus("Ready");
+    setError(null);
+    setProgress(0);
+  };
+
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-200 p-12 font-mono flex flex-col items-center">
       <div className="w-full max-w-2xl space-y-8">
         
-        <header className="border-b border-neutral-800 pb-6">
-          <h1 className="text-3xl font-bold text-white mb-2">LocalCrunch v1.0</h1>
-          <p className="text-neutral-500">Rust + WASM + WebWorkers</p>
+        <header className="border-b border-neutral-800 pb-6 flex justify-between items-end">
+          <div>
+            <h1 className="text-3xl font-bold text-white mb-2">LocalCrunch v1.1</h1>
+            <p className="text-neutral-500">Rust + WASM + WebWorkers</p>
+          </div>
+          <div className={`px-3 py-1 rounded text-sm font-bold ${
+            status === "Error" ? "bg-red-500/20 text-red-400" : 
+            status === "Done" ? "bg-green-500/20 text-green-400" : 
+            "bg-neutral-800 text-neutral-400"
+          }`}>
+            {status}
+          </div>
         </header>
 
-        <Dropzone onFileSelect={handleFileSelect} isProcessing={isProcessing} />
+        <div className="relative">
+          <Dropzone onFileSelect={handleFileSelect} isProcessing={isProcessing} />
+          
+          {error && (
+            <div className="absolute inset-0 bg-neutral-950/90 flex flex-col items-center justify-center text-red-400 z-10 rounded-lg border border-red-900/50">
+              <AlertCircle className="w-12 h-12 mb-2" />
+              <p>Error: {error}</p>
+              <button onClick={handleReset} className="mt-4 px-4 py-2 bg-red-900/50 hover:bg-red-900/80 rounded text-white text-sm">
+                Dismiss
+              </button>
+            </div>
+          )}
+        </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div className="bg-neutral-900 p-4 rounded border border-neutral-800">
-            <div className="text-neutral-400 text-xs uppercase">Rows Processed</div>
-            <div className="text-3xl text-white font-bold">
+            <div className="text-neutral-500 text-xs uppercase mb-1">Rows Processed</div>
+            <div className="text-3xl text-white font-bold tracking-tight">
               {stats.rows_processed.toLocaleString()}
             </div>
           </div>
           <div className="bg-neutral-900 p-4 rounded border border-neutral-800">
-            <div className="text-neutral-400 text-xs uppercase">Column Sum (Approximation)</div>
-            <div className="text-3xl text-blue-400 font-bold">
+            <div className="text-neutral-500 text-xs uppercase mb-1">Column Sum</div>
+            <div className="text-3xl text-blue-400 font-bold tracking-tight">
               {stats.numeric_sum.toLocaleString(undefined, { maximumFractionDigits: 2 })}
             </div>
           </div>
         </div>
 
-        <div className="relative h-2 w-full bg-neutral-900 rounded-full overflow-hidden">
-          <div 
-            className="h-full bg-blue-500 transition-all duration-75 ease-out"
-            style={{ width: `${progress}%` }}
-          />
+        <div className="h-16 flex items-center justify-between gap-4 bg-neutral-900/30 p-4 rounded-lg border border-neutral-800/50">
+           <div className="flex-1 mr-4">
+              <div className="h-2 w-full bg-neutral-800 rounded-full overflow-hidden">
+                <div 
+                  className={`h-full transition-all duration-300 ease-out ${error ? 'bg-red-500' : 'bg-blue-500'}`}
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+           </div>
+
+           {isProcessing ? (
+             <button 
+               onClick={handleCancel}
+               className="flex items-center gap-2 px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded transition-colors text-sm font-bold border border-red-500/20"
+             >
+               <XCircle className="w-4 h-4" /> Cancel
+             </button>
+           ) : (
+             <button 
+               onClick={handleReset}
+               className="flex items-center gap-2 px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded transition-colors text-sm font-bold"
+             >
+               <RefreshCw className="w-4 h-4" /> Reset
+             </button>
+           )}
         </div>
 
-        <div className="bg-black border border-neutral-800 rounded-lg p-4 h-48 overflow-y-auto text-xs font-mono shadow-inner">
+        <div className="bg-black border border-neutral-800 rounded-lg p-4 h-40 overflow-y-auto text-xs font-mono shadow-inner opacity-70">
           {logs.map((log, i) => (
-            <div key={i} className="mb-1 text-neutral-400 border-b border-neutral-900/50 pb-1">
+            <div key={i} className="mb-1 text-neutral-500 border-b border-neutral-900/50 pb-1 last:border-0">
               {log}
             </div>
           ))}
