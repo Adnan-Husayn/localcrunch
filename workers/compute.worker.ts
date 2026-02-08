@@ -1,4 +1,5 @@
-import init, { init_hooks, DataProcessor, SchemaDetector } from "../cruncher_core/pkg/cruncher_core";
+import init, { DataProcessor, SchemaDetector } from "../cruncher_core/pkg/cruncher_core";
+import init_hooks from '../cruncher_core/pkg/cruncher_core';
 
 const ctx: Worker = self as any;
 let isWasmInitialized = false;
