@@ -7,7 +7,7 @@ let isWasmInitialized = false;
 let processor: DataProcessor | null = null;
 
 ctx.onmessage = async (e: MessageEvent) => {
-    const { action, chunk, columnIndex } = e.data;
+    const { action, chunk, columnCount } = e.data;
 
     if (action === 'init_wasm') {
         try {
@@ -40,13 +40,10 @@ ctx.onmessage = async (e: MessageEvent) => {
     if (!isWasmInitialized) return;
 
     if (action === 'start_stream') {
-        if (processor) {
-            processor.free();
-        }
+        if (processor) processor.free();
         
-        const col = columnIndex !== undefined ? columnIndex : 2;
-        
-        processor = new DataProcessor(col, ""); 
+        const count = columnCount || 1; 
+        processor = new DataProcessor(count);
 
         ctx.postMessage({ status: 'ready' });
     }
@@ -58,10 +55,10 @@ ctx.onmessage = async (e: MessageEvent) => {
             ctx.postMessage({
                 status: 'progress',
                 stats,
-                progress: 0 
+                progress: 0
             });
             ctx.postMessage({ status: "chunk_ack" });
-            
+
         } catch (error) {
             console.error(error);
             ctx.postMessage({ status: "error", error: "processing failed" });
