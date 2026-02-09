@@ -263,11 +263,15 @@ impl DataProcessor {
             }
         }
 
+        self.get_results()
+    }
+
+    pub fn get_results(&self) -> JsValue {
         let stats = AnalysisResult {
             rows_processed: self.total_rows,
-            columns: self.column_stats.clone(),
+            columns: self.column_stats.clone()
         };
-
+        
         serde_wasm_bindgen::to_value(&stats).unwrap()
     }
 }
