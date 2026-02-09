@@ -17,6 +17,10 @@ import {
 
 type ColType = "Null" | "Boolean" | "Integer" | "Float" | "Date" | "String";
 
+interface CategoryCount { 
+  name: string;
+  value: number;
+}
 interface SchemaColumn {
   name: string;
   col_type: ColType;
@@ -36,6 +40,9 @@ interface ColumnStats {
   mean: number;
   m2: number;
   numeric_count: number;
+  top_categories: CategoryCount[];
+  unique_count_approx: number;
+  is_high_cardinality: boolean;
 }
 
 interface AnalysisResult {
@@ -186,16 +193,13 @@ export default function Home() {
     }
   };
 
-  const StatCard = ({ colName, stats, type }: { colName: string, stats: ColumnStats, type: string }) => {
+ const StatCard = ({ colName, stats, type }: { colName: string, stats: ColumnStats, type: string }) => {
     const isNumeric = stats.numeric_count > 0 && type !== "String";
     const validCount = stats.total_count - stats.null_count;
     const fillPercent = stats.total_count > 0 ? (validCount / stats.total_count) * 100 : 0;
-    
-    const stdDev = stats.numeric_count > 1 
-        ? Math.sqrt(stats.m2 / (stats.numeric_count - 1)) 
-        : 0;
+    const stdDev = stats.numeric_count > 1 ? Math.sqrt(stats.m2 / (stats.numeric_count - 1)) : 0;
 
-    return (
+ return (
       <div className="bg-[#111] border border-neutral-800 rounded-lg p-4 flex flex-col gap-3 min-w-[200px] hover:border-neutral-700 transition-colors">
          <div className="flex justify-between items-start">
             <h3 className="font-bold text-neutral-200 truncate w-32 text-sm" title={colName}>{colName}</h3>
@@ -232,10 +236,33 @@ export default function Home() {
                  </div>
              </div>
          ) : (
-             <div className="mt-auto pt-4 text-center">
-                 <span className="text-[10px] text-neutral-600 italic px-2 py-1 border border-dashed border-neutral-800 rounded">
-                     Categorical Data
-                 </span>
+             <div className="mt-2 space-y-2">
+                 <div className="flex justify-between items-center">
+                    <span className="text-[10px] text-neutral-500 uppercase">Top Values</span>
+                    {stats.is_high_cardinality && (
+                        <span className="text-[9px] text-yellow-500 bg-yellow-500/10 px-1 rounded">High Cardinality</span>
+                    )}
+                 </div>
+                 
+                 <div className="space-y-1.5">
+                    {stats.top_categories.map((cat, idx) => {
+                        const percent = (cat.value / validCount) * 100;
+                        return (
+                            <div key={idx} className="relative h-6 flex items-center">
+                                <div className="absolute inset-0 bg-neutral-900 rounded overflow-hidden">
+                                    <div className="h-full bg-blue-900/40" style={{ width: `${percent}%` }} />
+                                </div>
+                                <div className="relative z-10 flex justify-between w-full px-2 text-[10px]">
+                                    <span className="text-neutral-300 truncate w-24">{cat.name}</span>
+                                    <span className="text-neutral-500 font-mono">{percent.toFixed(0)}%</span>
+                                </div>
+                            </div>
+                        )
+                    })}
+                    {stats.top_categories.length === 0 && (
+                        <div className="text-center text-[10px] text-neutral-600 py-2">No data</div>
+                    )}
+                 </div>
              </div>
          )}
       </div>

@@ -145,6 +145,13 @@ fn detect_type(current_type: &mut ColumnType, value: &str) {
 }
 
 #[derive(Serialize, Clone)]
+pub struct HistogramBin {
+    range_start: f64,
+    range_end: f64,
+    count: u32,
+}
+
+#[derive(Serialize, Clone)]
 pub struct ColumnStats {
     col_index: usize,
     total_count: usize,
@@ -162,7 +169,13 @@ pub struct ColumnStats {
 
     top_categories: Vec<CategoryCount>,
     unique_count_approx: usize,
-    is_high_cardinality: bool
+    is_high_cardinality: bool,
+
+    #[serde(skip)]
+    reservoir: Vec<f64>,
+    histogram: Vec<HistogramBin>,
+    #[serde(skip)]
+    rng: u32,
 }
 
 impl ColumnStats {
@@ -180,7 +193,10 @@ impl ColumnStats {
             frequency_map: HashMap::new(),
             top_categories: Vec::new(),
             unique_count_approx: 0,
-            is_high_cardinality: false
+            is_high_cardinality: false,
+            reservoir: Vec::with_capacity(1000),
+            histogram: Vec::new(),
+            rng: (index as u32).wrapping_mul(123456789) + 1,
         }
     }
 
@@ -207,12 +223,28 @@ impl ColumnStats {
             self.mean += delta / self.numeric_count as f64;
             let delta2 = val - self.mean;
             self.m2 += delta * delta2;
+
+            if self.reservoir.len() < 200 {
+                self.reservoir.push(val);
+            } else {
+                let mut rng = SimpleRng::new(self.rng);
+                let r = rng.next_f64();
+                self.rng = rng.state;
+
+                if r < (200.0 / self.numeric_count as f64) { 
+                    let replace_idx = (rng.next_f64() * 200.0) as usize;
+                    if replace_idx < self.reservoir.len() { 
+                        self.reservoir[replace_idx] = val;
+                    }
+                    self.rng = rng.state;
+                }
+            }
         }
 
         if !self.is_high_cardinality {
             let count = self.frequency_map.entry(val_str.to_string()).or_insert(0);
             *count += 1;
-            
+
             if self.frequency_map.len() > 1000 {
                 self.is_high_cardinality = true;
             }
@@ -224,15 +256,42 @@ impl ColumnStats {
     }
 
     fn finalize_chunk(&mut self) {
-        let mut categories : Vec<CategoryCount> = self.frequency_map
+        let mut categories: Vec<CategoryCount> = self
+            .frequency_map
             .iter()
-            .map(|(k, v)| CategoryCount {name: k.clone(), value: *v})
+            .map(|(k, v)| CategoryCount {
+                name: k.clone(),
+                value: *v,
+            })
             .collect();
 
         categories.sort_by(|a, b| b.value.cmp(&a.value));
 
         self.top_categories = categories.into_iter().take(5).collect();
         self.unique_count_approx = self.frequency_map.len();
+
+        if !self.reservoir.is_empty() && self.min < self.max {
+            let num_bins = 20;
+            let range = self.max - self.min;
+            let step = range / num_bins as f64;
+
+            let mut bins : Vec<HistogramBin> = (0..num_bins).map(|i| {
+                HistogramBin {
+                    range_start: self.min + (i as f64 * step),
+                    range_end: self.min + ((i + 1) as f64 * step),
+                    count: 0
+                }
+            }).collect();
+
+            for &sample in &self.reservoir {
+                if sample >= self.min && sample <= self.max {
+                    let mut bin_indx = ((sample - self.min) / step) as usize;
+                    if bin_indx >= num_bins { bin_indx = num_bins - 1; }
+                    bins[bin_indx].count += 1;
+                }
+            }
+            self.histogram = bins;
+        }
     }
 }
 
@@ -241,6 +300,24 @@ pub struct AnalysisResult {
     rows_processed: usize,
     columns: Vec<ColumnStats>,
 }
+
+struct SimpleRng {
+    state: u32,
+}
+impl SimpleRng {
+    fn new(seed: u32) -> Self {
+        SimpleRng { state: seed }
+    }
+    fn next_f64(&mut self) -> f64 {
+        let mut x = self.state;
+        x ^= x << 13;
+        x ^= x >> 17;
+        x ^= x << 5;
+        self.state = x;
+        (x as f64) / (u32::MAX as f64)
+    }
+}
+
 #[derive(Serialize, Clone)]
 pub struct CategoryCount {
     name: String,
