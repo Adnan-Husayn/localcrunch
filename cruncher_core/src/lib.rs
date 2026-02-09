@@ -1,6 +1,6 @@
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
-use std::io::Cursor;
+use std::{collections::HashMap, io::Cursor};
 use wasm_bindgen::prelude::*;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -156,6 +156,13 @@ pub struct ColumnStats {
     mean: f64,
     m2: f64,
     numeric_count: usize,
+
+    #[serde(skip)]
+    frequency_map: HashMap<String, u32>,
+
+    top_categories: Vec<CategoryCount>,
+    unique_count_approx: usize,
+    is_high_cardinality: bool
 }
 
 impl ColumnStats {
@@ -170,6 +177,10 @@ impl ColumnStats {
             mean: 0.0,
             m2: 0.0,
             numeric_count: 0,
+            frequency_map: HashMap::new(),
+            top_categories: Vec::new(),
+            unique_count_approx: 0,
+            is_high_cardinality: false
         }
     }
 
@@ -197,6 +208,31 @@ impl ColumnStats {
             let delta2 = val - self.mean;
             self.m2 += delta * delta2;
         }
+
+        if !self.is_high_cardinality {
+            let count = self.frequency_map.entry(val_str.to_string()).or_insert(0);
+            *count += 1;
+            
+            if self.frequency_map.len() > 1000 {
+                self.is_high_cardinality = true;
+            }
+        } else {
+            if let Some(count) = self.frequency_map.get_mut(val_str) {
+                *count += 1;
+            }
+        }
+    }
+
+    fn finalize_chunk(&mut self) {
+        let mut categories : Vec<CategoryCount> = self.frequency_map
+            .iter()
+            .map(|(k, v)| CategoryCount {name: k.clone(), value: *v})
+            .collect();
+
+        categories.sort_by(|a, b| b.value.cmp(&a.value));
+
+        self.top_categories = categories.into_iter().take(5).collect();
+        self.unique_count_approx = self.frequency_map.len();
     }
 }
 
@@ -266,12 +302,16 @@ impl DataProcessor {
         self.get_results()
     }
 
-    pub fn get_results(&self) -> JsValue {
+    pub fn get_results(&mut self) -> JsValue {
+
+        for col in &mut self.column_stats {
+            col.finalize_chunk();
+        }
+
         let stats = AnalysisResult {
             rows_processed: self.total_rows,
-            columns: self.column_stats.clone()
+            columns: self.column_stats.clone(),
         };
-        
         serde_wasm_bindgen::to_value(&stats).unwrap()
     }
 }
