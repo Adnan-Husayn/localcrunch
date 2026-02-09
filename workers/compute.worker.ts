@@ -5,9 +5,10 @@ const ctx: Worker = self as any;
 let isWasmInitialized = false;
 
 let processor: DataProcessor | null = null;
+let lastThrottledTime = 0;
 
 ctx.onmessage = async (e: MessageEvent) => {
-    const { action, chunk, columnCount } = e.data;
+    const { action, chunk, columnIndex, columnCount } = e.data;
 
     if (action === 'init_wasm') {
         try {
@@ -41,10 +42,10 @@ ctx.onmessage = async (e: MessageEvent) => {
 
     if (action === 'start_stream') {
         if (processor) processor.free();
-        
-        const count = columnCount || 1; 
-        processor = new DataProcessor(count);
 
+        const count = columnCount || 1;
+        processor = new DataProcessor(count);
+        lastThrottledTime = 0;
         ctx.postMessage({ status: 'ready' });
     }
 
@@ -52,13 +53,19 @@ ctx.onmessage = async (e: MessageEvent) => {
         try {
             const stats = processor.process_chunk(new Uint8Array(chunk));
 
-            ctx.postMessage({
-                status: 'progress',
-                stats,
-                progress: 0
-            });
-            ctx.postMessage({ status: "chunk_ack" });
+            const now = Date.now();
+            if (now - lastThrottledTime > 300) {
+                ctx.postMessage({
+                    status: 'progress',
+                    stats,
+                    progress: 0
+                });
+                lastThrottledTime = now;
+            } else {
+                ctx.postMessage({ status: 'progress' });
+            }
 
+            ctx.postMessage({ status: "chunk_ack" });
         } catch (error) {
             console.error(error);
             ctx.postMessage({ status: "error", error: "processing failed" });
@@ -66,6 +73,11 @@ ctx.onmessage = async (e: MessageEvent) => {
     }
 
     else if (action === 'end_stream') {
+        if ( processor ) {
+            const finalStats = processor.get_results();
+            ctx.postMessage({status: 'progress', stats: finalStats});
+        }
+        
         ctx.postMessage({
             status: "complete",
             result: `Job Finished`,
