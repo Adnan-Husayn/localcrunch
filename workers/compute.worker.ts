@@ -8,7 +8,7 @@ let processor: DataProcessor | null = null;
 let lastThrottledTime = 0;
 
 ctx.onmessage = async (e: MessageEvent) => {
-    const { action, chunk, columnIndex, columnCount } = e.data;
+    const { action, chunk, columnCount, filters } = e.data;
 
     if (action === 'init_wasm') {
         try {
@@ -44,7 +44,7 @@ ctx.onmessage = async (e: MessageEvent) => {
         if (processor) processor.free();
 
         const count = columnCount || 1;
-        processor = new DataProcessor(count);
+        processor = new DataProcessor(count, filters || []);
         lastThrottledTime = 0;
         ctx.postMessage({ status: 'ready' });
     }
