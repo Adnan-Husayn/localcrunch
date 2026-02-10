@@ -231,9 +231,9 @@ impl ColumnStats {
                 let r = rng.next_f64();
                 self.rng = rng.state;
 
-                if r < (200.0 / self.numeric_count as f64) { 
+                if r < (200.0 / self.numeric_count as f64) {
                     let replace_idx = (rng.next_f64() * 200.0) as usize;
-                    if replace_idx < self.reservoir.len() { 
+                    if replace_idx < self.reservoir.len() {
                         self.reservoir[replace_idx] = val;
                     }
                     self.rng = rng.state;
@@ -275,18 +275,20 @@ impl ColumnStats {
             let range = self.max - self.min;
             let step = range / num_bins as f64;
 
-            let mut bins : Vec<HistogramBin> = (0..num_bins).map(|i| {
-                HistogramBin {
+            let mut bins: Vec<HistogramBin> = (0..num_bins)
+                .map(|i| HistogramBin {
                     range_start: self.min + (i as f64 * step),
                     range_end: self.min + ((i + 1) as f64 * step),
-                    count: 0
-                }
-            }).collect();
+                    count: 0,
+                })
+                .collect();
 
             for &sample in &self.reservoir {
                 if sample >= self.min && sample <= self.max {
                     let mut bin_indx = ((sample - self.min) / step) as usize;
-                    if bin_indx >= num_bins { bin_indx = num_bins - 1; }
+                    if bin_indx >= num_bins {
+                        bin_indx = num_bins - 1;
+                    }
                     bins[bin_indx].count += 1;
                 }
             }
@@ -318,6 +320,13 @@ impl SimpleRng {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Filter {
+    col_index: usize,
+    operator: String,
+    value: String,
+}
+
 #[derive(Serialize, Clone)]
 pub struct CategoryCount {
     name: String,
@@ -329,12 +338,14 @@ pub struct DataProcessor {
     total_rows: usize,
     tail_buffer: Vec<u8>,
     column_stats: Vec<ColumnStats>,
+    filters: Vec<Filter>,
 }
 
 #[wasm_bindgen]
 impl DataProcessor {
     #[wasm_bindgen(constructor)]
-    pub fn new(col_count: usize) -> DataProcessor {
+    pub fn new(col_count: usize, filters_val: JsValue) -> DataProcessor {
+        let filters: Vec<Filter> = serde_wasm_bindgen::from_value(filters_val).unwrap_or(vec![]);
         let mut stats = Vec::with_capacity(col_count);
         for i in 0..col_count {
             stats.push(ColumnStats::new(i));
@@ -344,6 +355,7 @@ impl DataProcessor {
             total_rows: 0,
             tail_buffer: Vec::new(),
             column_stats: stats,
+            filters,
         }
     }
 
@@ -366,11 +378,12 @@ impl DataProcessor {
 
         for result in rdr.records() {
             if let Ok(record) = result {
-                self.total_rows += 1;
-
-                for (i, field) in record.iter().enumerate() {
-                    if i < self.column_stats.len() {
-                        self.column_stats[i].update(field);
+                if self.check_row(&record) {
+                    self.total_rows += 1;
+                    for (i, field) in record.iter().enumerate() {
+                        if i < self.column_stats.len() {
+                            self.column_stats[i].update(field);
+                        }
                     }
                 }
             }
@@ -379,8 +392,46 @@ impl DataProcessor {
         self.get_results()
     }
 
-    pub fn get_results(&mut self) -> JsValue {
+    fn check_row(&self, record: &csv::StringRecord) -> bool {
+        if self.filters.is_empty() { return  true; }
+        
+        for filter in &self.filters {
+            let field = match record.get(filter.col_index) {
+                Some(f) => f,
+                None => return false,
+            };
 
+            let matches = match filter.operator.as_str() { 
+                "==" => field == filter.value,
+                "!=" => field != filter.value,
+                "contains" => field.contains(&filter.value),
+                ">" | "<" | ">=" | "<=" => {
+                    
+                    if let (Ok(a), Ok(b)) = (field.parse::<f64>(), filter.value.parse::<f64>()) {
+                        match filter.operator.as_str() {
+                            ">" => a > b,
+                             "<" => a < b,
+                             ">=" => a >= b,
+                             "<=" => a <= b,
+                             _ => false
+                        }
+                    } else {
+                        match filter.operator.as_str() {
+                             ">" => field > &filter.value,
+                             "<" => field < &filter.value,
+                             _ => false
+                         }
+                    }
+                },
+                _ => true
+            };
+
+            if !matches { return false; }
+        }
+        true
+    }
+
+    pub fn get_results(&mut self) -> JsValue {
         for col in &mut self.column_stats {
             col.finalize_chunk();
         }
