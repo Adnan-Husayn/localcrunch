@@ -5,6 +5,7 @@ const nextConfig: NextConfig = {
     config.experiments = { ...config.experiments, asyncWebAssembly: true };
     return config;
   },
+  turbopack: {}
 };
 
 export default nextConfig;
