@@ -1,87 +1,84 @@
 import init, { DataProcessor, SchemaDetector } from "../cruncher_core/pkg/cruncher_core";
-import init_hooks from '../cruncher_core/pkg/cruncher_core';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const ctx = self as any;
-let isWasmInitialized = false;
 
 let processor: DataProcessor | null = null;
 let lastThrottledTime = 0;
 
+// One shared promise, so messages that arrive while WASM is still loading all
+// wait for the same initialization instead of racing it.
+let wasmReady: Promise<unknown> | null = null;
+const ensureWasm = () => (wasmReady ??= init());
+
+const fail = (error: unknown, message: string) => {
+    console.error(error);
+    ctx.postMessage({ status: "error", error: message });
+};
+
 ctx.onmessage = async (e: MessageEvent) => {
     const { action, chunk, columnCount, filters } = e.data;
 
-    if (action === 'init_wasm') {
+    if (action === "init_wasm") {
         try {
-            await init();
-            if (typeof init_hooks === 'function') {
-                init_hooks();
-            }
-            isWasmInitialized = true;
-            ctx.postMessage({ status: 'complete', result: 'WASM engine online 🦀' });
+            await ensureWasm();
+            ctx.postMessage({ status: "wasm_ready" });
         } catch (error) {
-            console.error(error);
-            ctx.postMessage({ status: 'error', error: 'Failed to load WASM' });
+            wasmReady = null;
+            fail(error, "Couldn't load the analysis engine. Try reloading the page.");
         }
         return;
     }
 
     if (action === "sniff_preview") {
         try {
-            if (!isWasmInitialized) await init();
-            const buffer = new Uint8Array(chunk);
-            const result = SchemaDetector.sniff_preview(buffer);
+            await ensureWasm();
+            const result = SchemaDetector.sniff_preview(new Uint8Array(chunk));
             ctx.postMessage({ status: "preview_ready", result });
-        } catch (err) {
-            console.error(err);
-            ctx.postMessage({ status: "error", error: "Failed to detect schema" });
+        } catch (error) {
+            fail(error, "Couldn't read this file as a CSV.");
         }
         return;
     }
 
-    if (!isWasmInitialized) return;
-
-    if (action === 'start_stream') {
-        if (processor) processor.free();
-
-        const count = columnCount || 1;
-        processor = new DataProcessor(count, filters || []);
-        lastThrottledTime = 0;
-        ctx.postMessage({ status: 'ready' });
+    if (action === "start_stream") {
+        try {
+            await ensureWasm();
+            processor?.free();
+            processor = new DataProcessor(columnCount || 1, filters || []);
+            lastThrottledTime = 0;
+            ctx.postMessage({ status: "ready" });
+        } catch (error) {
+            processor = null;
+            fail(error, error instanceof Error ? error.message : String(error));
+        }
     }
 
-    else if (action === 'chunk' && processor) {
+    else if (action === "chunk" && processor) {
         try {
             const stats = processor.process_chunk(new Uint8Array(chunk));
 
             const now = Date.now();
             if (now - lastThrottledTime > 300) {
-                ctx.postMessage({
-                    status: 'progress',
-                    stats,
-                    progress: 0
-                });
+                ctx.postMessage({ status: "progress", stats });
                 lastThrottledTime = now;
             } else {
-                ctx.postMessage({ status: 'progress' });
+                ctx.postMessage({ status: "progress" });
             }
 
             ctx.postMessage({ status: "chunk_ack" });
         } catch (error) {
-            console.error(error);
-            ctx.postMessage({ status: "error", error: "processing failed" });
+            fail(error, "Something went wrong while analyzing the file.");
         }
     }
 
-    else if (action === 'end_stream') {
-        if ( processor ) {
-            const finalStats = processor.get_results();
-            ctx.postMessage({status: 'progress', stats: finalStats});
+    else if (action === "end_stream" && processor) {
+        try {
+            // finish() also parses a last row that has no trailing newline.
+            ctx.postMessage({ status: "progress", stats: processor.finish() });
+            ctx.postMessage({ status: "complete" });
+        } catch (error) {
+            fail(error, "Something went wrong while finishing the analysis.");
         }
-        
-        ctx.postMessage({
-            status: "complete",
-            result: `Job Finished`,
-        });
     }
 };

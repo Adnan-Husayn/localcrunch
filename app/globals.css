@@ -1,37 +1,75 @@
 @import "tailwindcss";
 
-:root {
-  --background: #09090b; /* Deep premium dark */
-  --foreground: #f4f4f5; /* Zinc-100 for text */
+/* Light, flat theme. Components use these tokens (bg-surface, text-muted, ...)
+   rather than raw colours, so the palette lives in one place. */
+@theme {
+  --color-canvas: #f6f6f3;
+  --color-surface: #ffffff;
+  --color-sunken: #f0f0ec;
+  --color-line: #e4e4de;
+  --color-line-strong: #cfcfc7;
+  --color-ink: #1a1a18;
+  --color-muted: #66665f;
+  --color-faint: #74746e;
+  --color-accent: #2452d6;
+  --color-accent-strong: #1b3fa8;
+  --color-accent-soft: #eaf0ff;
+  --color-good: #15803d;
+  --color-bad: #b42318;
+  --color-warn: #b45309;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Custom scrollbar for webkit */
+::selection {
+  background: var(--color-accent-soft);
+  color: var(--color-accent-strong);
+}
+
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 ::-webkit-scrollbar-track {
-  background: #09090b; 
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #27272a; 
-  border-radius: 4px;
+  background: var(--color-line-strong);
+  border-radius: 999px;
+  border: 2px solid var(--color-canvas);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3f3f46; 
+  background: var(--color-faint);
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.fade-in {
+  animation: fade-in 0.25s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-in {
+    animation: none;
+  }
 }
