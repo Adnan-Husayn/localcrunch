@@ -4,7 +4,7 @@
 
 A private, instant data profiler and explorer that runs in your browser. Drop in a CSV and see what's in it: column types, distributions, missing values, duplicates and data-quality problems. Then click through the data to explore it. A Rust engine compiled to WebAssembly streams the file through a web worker in 10 MB chunks, so the file never leaves your machine and its size is limited by time, not memory.
 
-Try it without a file: the landing page can generate a messy 50,000-row orders dataset (`lib/sample-data.ts`) with missing values, placeholders, bad prices and duplicate rows for the profiler to find.
+The site has a landing page (`/`) and the tool itself (`/analyze`). Try it without a file: "Try it with sample data" opens the tool on a generated, deliberately messy 50,000-row orders dataset (`lib/sample-data.ts`) with missing values, placeholders, bad prices and duplicate rows for the profiler to find.
 
 ## What it does
 
