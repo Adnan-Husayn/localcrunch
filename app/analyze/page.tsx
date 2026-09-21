@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { AlertTriangle, BarChart3, CheckCircle2, Download, FlaskConical, Info, Play, RefreshCw, ShieldCheck, X, XCircle } from "lucide-react";
+import { Download, FlaskConical, Play, RefreshCw, ShieldCheck, X, XCircle } from "lucide-react";
 import { Dropzone } from "@/components/dropzone";
+import { Logo } from "@/components/logo";
+import { SeverityTag } from "@/components/severity-tag";
 import { TypeBadge } from "@/components/type-badge";
 import { FilterPanel } from "@/components/filter-panel";
 import { ColumnDetail } from "@/components/column-detail";
@@ -18,8 +20,10 @@ const FINDINGS_PREVIEW = 4;
 const formatBytes = (bytes: number) =>
     bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 
-export default function Home() {
+export default function AnalyzePage() {
     const workerRef = useRef<Worker | null>(null);
+    // The worker's message handler outlives renders, so it reads the current file from a ref.
+    const fileRef = useRef<File | null>(null);
 
     const [file, setFile] = useState<File | null>(null);
     const [columns, setColumns] = useState<SchemaColumn[]>([]);
@@ -43,7 +47,7 @@ export default function Home() {
     const isSample = file?.name === SAMPLE_FILE_NAME;
 
     const readNextChunk = useCallback(() => {
-        const f = file;
+        const f = fileRef.current;
         const worker = workerRef.current;
         if (!f || !worker) return;
 
@@ -61,12 +65,12 @@ export default function Home() {
             }
         };
         reader.readAsArrayBuffer(chunk);
-    }, [file]);
+    }, []);
 
     const setupWorker = useCallback(() => {
         if (workerRef.current) workerRef.current.terminate();
 
-        const worker = new Worker(new URL("../workers/compute.worker.ts", import.meta.url));
+        const worker = new Worker(new URL("../../workers/compute.worker.ts", import.meta.url));
         workerRef.current = worker;
 
         worker.onmessage = (event) => {
@@ -75,6 +79,7 @@ export default function Home() {
             if (status === "preview_ready") {
                 setIsLoadingPreview(false);
                 if (result.schema.length === 0) {
+                    fileRef.current = null;
                     setFile(null);
                     setErrorMessage("No columns found. Is this a CSV file with a header row?");
                 } else {
@@ -86,9 +91,10 @@ export default function Home() {
             else if (status === "progress") {
                 if (stats) setAnalysis(stats);
 
-                if (file) {
+                const f = fileRef.current;
+                if (f) {
                     const currentBytes = offsetRef.current;
-                    setProgress(Math.min(99, (currentBytes / file.size) * 100));
+                    setProgress(Math.min(99, (currentBytes / f.size) * 100));
 
                     const now = Date.now();
                     if (now - lastTickRef.current > 500) {
@@ -108,9 +114,10 @@ export default function Home() {
             else if (status === "complete") {
                 setIsProcessing(false);
                 setProgress(100);
-                if (file) {
+                const f = fileRef.current;
+                if (f) {
                     const seconds = Math.max((Date.now() - startTimeRef.current) / 1000, 0.001);
-                    setThroughput(file.size / 1024 / 1024 / seconds);
+                    setThroughput(f.size / 1024 / 1024 / seconds);
                 }
             }
 
@@ -122,14 +129,16 @@ export default function Home() {
         };
 
         worker.postMessage({ action: "init_wasm" });
-    }, [file, readNextChunk]);
+    }, [readNextChunk]);
 
+    // One worker for the page's lifetime (replaced only by "Start over").
     useEffect(() => {
-        lastTickRef.current = Date.now();
         setupWorker();
+        return () => workerRef.current?.terminate();
     }, [setupWorker]);
 
-    const handleFileDrop = (selectedFile: File) => {
+    const handleFileDrop = useCallback((selectedFile: File) => {
+        fileRef.current = selectedFile;
         setFile(selectedFile);
         setErrorMessage(null);
         setIsLoadingPreview(true);
@@ -150,10 +159,21 @@ export default function Home() {
             }
         };
         reader.readAsArrayBuffer(chunk);
-    };
+    }, []);
+
+    // The landing page links here with ?sample=1 to open the sample dataset directly.
+    const autoLoadedRef = useRef(false);
+    useEffect(() => {
+        if (autoLoadedRef.current) return;
+        autoLoadedRef.current = true;
+        if (new URLSearchParams(window.location.search).get("sample") === "1") {
+            // Deferred so the worker created by the effect above exists first.
+            setTimeout(() => handleFileDrop(createSampleFile()), 0);
+        }
+    }, [handleFileDrop]);
 
     const runAnalysis = useCallback((filters: Filter[]) => {
-        if (!columns.length || !file) return;
+        if (!columns.length || !fileRef.current) return;
 
         setPreview(null);
         setIsProcessing(true);
@@ -171,7 +191,7 @@ export default function Home() {
         });
 
         readNextChunk();
-    }, [columns, file, readNextChunk]);
+    }, [columns, readNextChunk]);
 
     const handleStartAnalysis = () => runAnalysis(activeFilters);
 
@@ -210,6 +230,7 @@ export default function Home() {
     };
 
     const handleReset = () => {
+        fileRef.current = null;
         setFile(null);
         setPreview(null);
         setAnalysis(null);
@@ -232,13 +253,7 @@ export default function Home() {
         <div className="min-h-screen bg-canvas text-ink">
             <header className="border-b border-line bg-surface">
                 <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4 sm:px-6">
-                    <div className="flex items-center gap-2.5">
-                        <div className="rounded-md bg-accent p-1.5 text-white">
-                            <BarChart3 className="h-4 w-4" />
-                        </div>
-                        <span className="text-base font-semibold tracking-tight">LocalCrunch</span>
-                        <span className="hidden text-sm text-muted sm:inline">Private data profiler</span>
-                    </div>
+                    <Logo tagline />
 
                     {(preview || showDashboard) && (
                         <button
@@ -253,7 +268,7 @@ export default function Home() {
 
             <main className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-6 sm:py-10">
                 {errorMessage && (
-                    <div role="alert" className="mx-auto flex max-w-2xl items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-bad">
+                    <div role="alert" className="mx-auto flex max-w-2xl items-center gap-2 rounded-lg border border-bad/30 bg-bad/5 px-4 py-3 text-sm text-bad">
                         <XCircle className="h-4 w-4 shrink-0" /> {errorMessage}
                     </div>
                 )}
@@ -301,7 +316,7 @@ export default function Home() {
                                 <div className="flex items-center gap-2">
                                     <h2 className="text-base font-semibold">{file?.name}</h2>
                                     {isSample && (
-                                        <span className="rounded-md bg-accent-soft px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-accent-strong">
+                                        <span className="rounded-sm bg-mark px-1.5 py-0.5 font-mono text-[10px] font-medium tracking-wider text-ink">
                                             SAMPLE DATA
                                         </span>
                                     )}
@@ -380,15 +395,15 @@ export default function Home() {
                                 aria-valuenow={Math.round(progress)}
                                 aria-valuemin={0}
                                 aria-valuemax={100}
-                                className="mt-4 h-2 w-full overflow-hidden rounded-full bg-sunken"
+                                className="mt-4 h-2 w-full overflow-hidden rounded-sm bg-sunken"
                             >
-                                <div style={{ width: `${progress}%` }} className="h-full rounded-full bg-accent transition-[width] duration-150" />
+                                <div style={{ width: `${progress}%` }} className="h-full bg-accent transition-[width] duration-150" />
                             </div>
                             {activeFilters.length > 0 && (
                                 <div className="mt-4 flex flex-wrap items-center gap-2">
                                     <span className="text-xs font-medium text-muted">Filtered to</span>
                                     {activeFilters.map((f, idx) => (
-                                        <span key={idx} className="inline-flex items-center gap-1 rounded-md border border-accent/30 bg-accent-soft py-1 pl-2 pr-1 text-xs font-medium text-accent-strong">
+                                        <span key={idx} className="inline-flex items-center gap-1 rounded-md border border-mark bg-accent-soft py-1 pl-2 pr-1 text-xs font-medium text-ink">
                                             {describeFilter(f, columns)}
                                             <button
                                                 aria-label={`Remove filter ${describeFilter(f, columns)}`}
@@ -419,13 +434,6 @@ export default function Home() {
                             <section className="rounded-xl border border-line bg-surface p-5">
                                 <div className="flex flex-wrap items-center justify-between gap-3">
                                     <div className="flex items-center gap-2">
-                                        {findings.length === 0 ? (
-                                            <CheckCircle2 className="h-5 w-5 text-good" />
-                                        ) : warningCount > 0 ? (
-                                            <AlertTriangle className="h-5 w-5 text-warn" />
-                                        ) : (
-                                            <Info className="h-5 w-5 text-faint" />
-                                        )}
                                         <h2 className="text-base font-semibold">
                                             {findings.length === 0
                                                 ? "No data quality issues found"
@@ -447,15 +455,11 @@ export default function Home() {
                                             const target = f.columnIndex;
                                             const row = (
                                                 <>
-                                                    {f.severity === "warning" ? (
-                                                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warn" />
-                                                    ) : (
-                                                        <Info className="mt-0.5 h-4 w-4 shrink-0 text-faint" />
-                                                    )}
+                                                    <SeverityTag severity={f.severity} />
                                                     <span className="min-w-0 flex-1">
                                                         <span className="text-sm font-medium text-ink">
                                                             {target !== null && <span className="font-mono">{columns[target]?.name}</span>}
-                                                            {target !== null ? " · " : ""}{f.title}
+                                                            {target !== null ? " / " : ""}{f.title}
                                                         </span>
                                                         <span className="block text-sm text-muted">{f.detail}</span>
                                                     </span>
@@ -482,7 +486,7 @@ export default function Home() {
                                 {findings.length > FINDINGS_PREVIEW && (
                                     <button
                                         onClick={() => setShowAllFindings((v) => !v)}
-                                        className="mt-2 text-sm font-medium text-accent hover:text-accent-strong"
+                                        className="mt-2 text-sm font-medium text-ink underline underline-offset-4 hover:text-accent-strong"
                                     >
                                         {showAllFindings ? "Show fewer" : `Show all ${findings.length} findings`}
                                     </button>
@@ -514,7 +518,7 @@ export default function Home() {
                                                     <span className="flex min-w-0 items-center gap-2">
                                                         <span className="truncate">{col.name}</span>
                                                         {warningColumns.has(idx) && (
-                                                            <span title="Has findings" className="h-1.5 w-1.5 shrink-0 rounded-full bg-warn" />
+                                                            <span title="Has findings" className="h-1.5 w-1.5 shrink-0 bg-ink" />
                                                         )}
                                                     </span>
                                                     <TypeBadge type={col.col_type} />

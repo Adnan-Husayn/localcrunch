@@ -1,20 +1,30 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { IBM_Plex_Mono, Schibsted_Grotesk } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const schibsted = Schibsted_Grotesk({
+  variable: "--font-schibsted",
   subsets: ["latin"],
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const plexMono = IBM_Plex_Mono({
+  variable: "--font-plex-mono",
   subsets: ["latin"],
+  weight: ["400", "500", "600"],
 });
+
+const description =
+  "Drop in a CSV and see column types, distributions, missing values, duplicates and data-quality problems. It runs entirely in your browser, so nothing is uploaded.";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://localcrunch.vercel.app"),
   title: "LocalCrunch: private data profiler",
-  description: "Analyze a CSV right in your browser. Column types, distributions and filters, with nothing uploaded.",
+  description,
+  openGraph: {
+    title: "LocalCrunch: private data profiler",
+    description,
+    type: "website",
+  },
 };
 
 export default function RootLayout({
@@ -25,7 +35,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased overflow-x-hidden`}
+        className={`${schibsted.variable} ${plexMono.variable} antialiased overflow-x-hidden`}
       >
         {children}
       </body>

@@ -1,40 +1,69 @@
 @import "tailwindcss";
 
-/* Light, flat theme. Components use these tokens (bg-surface, text-muted, ...)
-   rather than raw colours, so the palette lives in one place. */
+/* A printed-report look: neutral paper, ink for everything interactive, and a
+   highlighter mark reserved for things the tool wants you to notice. Components
+   use these tokens (bg-surface, text-muted, ...) rather than raw colours. */
 @theme {
-  --color-canvas: #f6f6f3;
+  --color-canvas: #f4f4f1;
   --color-surface: #ffffff;
-  --color-sunken: #f0f0ec;
-  --color-line: #e4e4de;
-  --color-line-strong: #cfcfc7;
-  --color-ink: #1a1a18;
-  --color-muted: #66665f;
-  --color-faint: #74746e;
-  --color-accent: #2452d6;
-  --color-accent-strong: #1b3fa8;
-  --color-accent-soft: #eaf0ff;
-  --color-good: #15803d;
-  --color-bad: #b42318;
-  --color-warn: #b45309;
+  --color-sunken: #ebebe6;
+  --color-line: #dcdbd4;
+  --color-line-strong: #b4b3ab;
+  --color-ink: #121211;
+  --color-muted: #57564f;
+  --color-faint: #76756c;
+  --color-accent: #121211;
+  --color-accent-strong: #33322e;
+  --color-accent-soft: #fff4b0;
+  --color-mark: #ffe14a;
+  --color-good: #1d6b3a;
+  --color-bad: #c22a10;
+  --color-warn: #8a5300;
+
+  /* Tight corners, like a printed table rather than app chrome. */
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
+  --radius-xl: 4px;
+  --radius-2xl: 6px;
 }
 
 @theme inline {
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-schibsted);
+  --font-mono: var(--font-plex-mono);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
 }
 
 body {
   background: var(--color-canvas);
   color: var(--color-ink);
-  font-family: var(--font-sans), system-ui, sans-serif;
+  font-family: var(--font-schibsted), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 ::selection {
-  background: var(--color-accent-soft);
-  color: var(--color-accent-strong);
+  background: var(--color-mark);
+  color: var(--color-ink);
+}
+
+/* Highlighter-pen underlay for the few words that matter. */
+.mark {
+  background: linear-gradient(transparent 14%, var(--color-mark) 14%, var(--color-mark) 90%, transparent 90%);
+  padding: 0 0.12em;
+  margin: 0 -0.12em;
+  color: inherit;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
 }
 
 ::-webkit-scrollbar {

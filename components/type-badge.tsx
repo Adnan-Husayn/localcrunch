@@ -1,14 +1,4 @@
-import { Calendar, CheckSquare, Hash, Type } from "lucide-react";
 import type { ColType } from "@/lib/types";
-
-const STYLES: Record<ColType, string> = {
-    Integer: "bg-blue-50 text-blue-700 border-blue-200",
-    Float: "bg-sky-50 text-sky-700 border-sky-200",
-    String: "bg-sunken text-muted border-line",
-    Date: "bg-violet-50 text-violet-700 border-violet-200",
-    Boolean: "bg-emerald-50 text-emerald-700 border-emerald-200",
-    Null: "bg-sunken text-faint border-line",
-};
 
 const LABELS: Record<ColType, string> = {
     Integer: "INT",
@@ -19,21 +9,17 @@ const LABELS: Record<ColType, string> = {
     Null: "EMPTY",
 };
 
-const ICONS: Record<ColType, React.ReactNode> = {
-    Integer: <Hash className="h-3 w-3" />,
-    Float: <Hash className="h-3 w-3" />,
-    String: <Type className="h-3 w-3" />,
-    Date: <Calendar className="h-3 w-3" />,
-    Boolean: <CheckSquare className="h-3 w-3" />,
-    Null: null,
-};
+// Numeric columns are filled, everything else is outlined, so the two kinds
+// are easy to tell apart at a glance without a rainbow of colours.
+const FILLED = new Set<ColType>(["Integer", "Float"]);
 
 export function TypeBadge({ type }: { type: ColType }) {
     return (
         <span
-            className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold tracking-wide ${STYLES[type] ?? STYLES.Null}`}
+            className={`inline-flex items-center rounded-sm px-1.5 py-0.5 font-mono text-[10px] font-medium leading-none tracking-wider ${
+                FILLED.has(type) ? "bg-ink text-canvas" : "border border-line-strong text-muted"
+            }`}
         >
-            {ICONS[type]}
             {LABELS[type] ?? type}
         </span>
     );

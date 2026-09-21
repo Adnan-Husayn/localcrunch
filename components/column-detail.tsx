@@ -1,5 +1,6 @@
-import { AlertTriangle, Info, ListFilter } from "lucide-react";
+import { ListFilter } from "lucide-react";
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { SeverityTag } from "@/components/severity-tag";
 import { TypeBadge } from "@/components/type-badge";
 import type { Finding } from "@/lib/insights";
 import type { ColumnStats, SchemaColumn } from "@/lib/types";
@@ -8,7 +9,7 @@ const fmt = (n: number, digits = 2) => n.toLocaleString(undefined, { maximumFrac
 
 function StatCard({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
     return (
-        <div className={`rounded-lg border p-4 ${highlight ? "border-accent/30 bg-accent-soft" : "border-line bg-surface"}`}>
+        <div className={`rounded-lg border p-4 ${highlight ? "border-mark bg-accent-soft" : "border-line bg-surface"}`}>
             <div className="text-xs font-medium text-muted">{label}</div>
             <div className="mt-1 font-mono text-xl font-semibold text-ink">{value}</div>
         </div>
@@ -50,13 +51,13 @@ function NumericView({ stats }: { stats: ColumnStats }) {
                                     tickFormatter={(v: number) => fmt(v, 1)}
                                     interval="preserveStartEnd"
                                     minTickGap={32}
-                                    tick={{ fontSize: 11, fill: "#66665f" }}
-                                    axisLine={{ stroke: "#e4e4de" }}
+                                    tick={{ fontSize: 11, fill: "var(--color-muted)" }}
+                                    axisLine={{ stroke: "var(--color-line)" }}
                                     tickLine={false}
                                 />
                                 <YAxis hide />
                                 <Tooltip
-                                    cursor={{ fill: "#f0f0ec" }}
+                                    cursor={{ fill: "var(--color-sunken)" }}
                                     content={({ active, payload }) => {
                                         if (!active || !payload?.length) return null;
                                         const bin = payload[0].payload;
@@ -72,7 +73,7 @@ function NumericView({ stats }: { stats: ColumnStats }) {
                                         );
                                     }}
                                 />
-                                <Bar dataKey="count" fill="#2452d6" radius={[3, 3, 0, 0]} isAnimationActive={false} />
+                                <Bar dataKey="count" fill="var(--color-accent)" radius={[3, 3, 0, 0]} isAnimationActive={false} />
                             </BarChart>
                         </ResponsiveContainer>
                     </div>
@@ -103,7 +104,7 @@ function CategoricalView({ stats, canFilter, onFilterValue }: CategoricalViewPro
                         </div>
                     </div>
                     {stats.is_high_cardinality && (
-                        <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-medium text-warn">
+                        <span className="rounded-md border border-mark bg-accent-soft px-2 py-1 text-xs font-medium text-ink">
                             High cardinality
                         </span>
                     )}
@@ -165,10 +166,10 @@ function FindingsCallout({ findings }: { findings: Finding[] }) {
                 <li
                     key={i}
                     className={`flex gap-2.5 rounded-lg border px-3 py-2.5 text-sm ${
-                        f.severity === "warning" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-line bg-surface text-muted"
+                        f.severity === "warning" ? "border-mark bg-accent-soft text-ink" : "border-line bg-surface text-muted"
                     }`}
                 >
-                    {f.severity === "warning" ? <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warn" /> : <Info className="mt-0.5 h-4 w-4 shrink-0 text-faint" />}
+                    <SeverityTag severity={f.severity} />
                     <span>
                         <span className="font-medium text-ink">{f.title}. </span>
                         {f.detail}
