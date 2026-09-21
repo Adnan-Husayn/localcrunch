@@ -22,6 +22,8 @@ The site has a landing page (`/`) and the tool itself (`/analyze`). Try it witho
 - **Row filters** (`contains`, `==`, `!=`, `>`, `>=`, `<`, `<=`, ANDed together) applied inside the Rust engine before any statistics are computed. Comparisons are numeric when both sides parse as numbers, lexicographic otherwise.
 - **Click to filter**: press "Only this" on any top value to re-run the whole profile on just those rows, and remove filters from the chips above the results.
 
+![Filtering the sample data: click "Only this" on Electronics, then on Europe, and the row count drops from 50,068 to 10,057 to 2,926 while the findings update](docs/filter-flow.gif)
+
 ## How it fits together
 
 ```
