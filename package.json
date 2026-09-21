@@ -1,16 +1,19 @@
 {
   "name": "localcrunch",
   "version": "0.1.0",
+  "description": "A private, instant data profiler and explorer that runs in your browser.",
+  "license": "MIT",
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "build:wasm": "wasm-pack build cruncher_core --target web && rm -f cruncher_core/pkg/.gitignore",
+    "test:wasm": "cargo test --manifest-path cruncher_core/Cargo.toml"
   },
   "dependencies": {
     "clsx": "^2.1.1",
-    "framer-motion": "^12.36.0",
     "lucide-react": "^0.563.0",
     "next": "16.1.6",
     "react": "19.2.3",

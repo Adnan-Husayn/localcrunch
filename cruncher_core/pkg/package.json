@@ -1,0 +1,17 @@
+{
+  "name": "cruncher_core",
+  "type": "module",
+  "description": "Streaming CSV profiling engine for LocalCrunch, compiled to WebAssembly.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "files": [
+    "cruncher_core_bg.wasm",
+    "cruncher_core.js",
+    "cruncher_core.d.ts"
+  ],
+  "main": "cruncher_core.js",
+  "types": "cruncher_core.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
